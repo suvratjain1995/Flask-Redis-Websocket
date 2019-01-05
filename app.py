@@ -9,7 +9,6 @@ from rq import Queue
 from rq.job import Job
 import json
 import pickle
-# q = Queue(connection=conn)
 
 redisClient = redis.StrictRedis(host='localhost',port=6379,db=0)
 redisClient.set('post',0)
@@ -115,12 +114,15 @@ def hour_stat(method_list):
 
 
 def general_stat(method_list):
+    records = []
+    for i in range(0,redisClient.llen('records')):
+        records.append(pickle.loads(redisClient.lindex('records',i)))
     general_stat_dict = {}
     for methods in method_list:
-        method_avg = methods+"_hour_avg"
-        method_count = methods+"_hour_count"
-        general_stat_dict[method_avg] = average_request(Records.records,methods)
-        general_stat_dict[method_count] = number_of_method_request(Records.records,methods)
+        method_avg = methods+"_avg"
+        method_count = methods+"_count"
+        general_stat_dict[method_avg] = average_request(records,methods)
+        general_stat_dict[method_count] = number_of_method_request(records,methods)
     return general_stat_dict
 
 @app.route('/stats',methods = ['GET', 'POST', 'PUT', 'DELETE'])
