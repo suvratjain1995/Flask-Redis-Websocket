@@ -12,6 +12,11 @@ from rq.job import Job
 import json
 import pickle
 
+
+"""
+Initializing Redis Variable and connection.
+The value persist even after server is restarted.
+"""
 redisClient = redis.StrictRedis(host='localhost',port=6379,db=0)
 redisClient.set('post',0)
 redisClient.set('get',0)
@@ -25,6 +30,10 @@ socketio = SocketIO(app, async_mode=async_mode)
 
 @app.before_request
 def start_time():
+    """
+    Steps Taken before Every Request is processed by the flask server
+    Incrementing the counter for active request and the method that the request is about.
+    """
     now = time.time()
     dt = datetime.datetime.fromtimestamp(now)   
     timestamp = dt
@@ -39,7 +48,12 @@ def start_time():
         redisClient.incr('delete')
     socketio.emit('recent_update',namespace = '/test');
 
+
+
 def set_request_value(request):
+    """
+    Decreasing the counter for active reqeust in case if the request has ended.
+    """
     if request.method == "POST":
         redisClient.decr('post')
     if request.method == "GET":
@@ -50,6 +64,9 @@ def set_request_value(request):
         redisClient.decr('delete')
 
 def average_request(reponse_list,method_name):
+    """
+    Return's the average response time for the list of request.
+    """
     average_request_result = 0
     for responses in reponse_list:
         if responses["Method"] == method_name:
@@ -60,6 +77,9 @@ def average_request(reponse_list,method_name):
         return 0;
 
 def number_of_method_request(response_list,method_name):
+    """
+    Returns the number of request made by a particular method.
+    """
     number_of_request = 0;
     for responses in response_list:
         if responses["Method"] == method_name:
@@ -67,9 +87,15 @@ def number_of_method_request(response_list,method_name):
     return number_of_request;
 
 def save_incoming_request(response):
+    """
+    Storing response object into the redis for /stats/
+    """
     redisClient.rpush("records",pickle.dumps(response))
 
 def get_active_request():
+    """
+    Return's dict of active request.
+    """
     response = {}
     response["POST"] = int(redisClient.get('post'))
     response["PUT"] = int(redisClient.get('put'))
@@ -78,6 +104,9 @@ def get_active_request():
     return response
 
 def minute_stat(method_list,current_time = None):
+    """
+    Return stats for the past minute of the request .
+    """
     valid_responses = []
     if current_time == None: 
         current_time = g.start
@@ -104,6 +133,9 @@ def minute_stat(method_list,current_time = None):
 
 
 def hour_stat(method_list,current_time = None):
+    """
+    Return's stats for the past hour of the request
+    """
     valid_responses = []
 
     if current_time == None: 
@@ -131,6 +163,9 @@ def hour_stat(method_list,current_time = None):
 
 
 def general_stat(method_list):
+    """
+    Returns General stats since the server inception.
+    """
     records = []
     for i in range(0,redisClient.llen('records')):
         records.append(pickle.loads(redisClient.lindex('records',i)))
@@ -143,6 +178,9 @@ def general_stat(method_list):
     return general_stat_dict
 
 def get_stats_socket():
+    """
+    Return stats for websocket
+    """
     response = {}
     response["minute_stat"] = minute_stat(['GET', 'POST', 'PUT', 'DELETE'],current_time=time.time())
     response["hour_stat"] = hour_stat(['GET', 'POST', 'PUT', 'DELETE'],current_time= time.time())
@@ -170,6 +208,9 @@ def test_connect():
 
 @app.route('/process/',methods = ['GET', 'POST', 'PUT', 'DELETE'])
 def entrypoint():
+    """
+    Executes process request. Return's response body for the method. 
+    """
     response = {}
     time1 = random.randint(15,30)
     time.sleep(time1)
