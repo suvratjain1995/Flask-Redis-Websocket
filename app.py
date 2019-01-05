@@ -1,4 +1,6 @@
-from flask import Flask,request,g,jsonify
+from flask import Flask,request,g,jsonify,render_template
+from flask_socketio import SocketIO, emit, join_room, leave_room, \
+    close_room, rooms, disconnect
 from multiprocessing import Queue
 app = Flask(__name__)
 import datetime
@@ -15,6 +17,12 @@ redisClient.set('post',0)
 redisClient.set('get',0)
 redisClient.set('put',0)
 redisClient.set('delete',0)
+
+
+async_mode = None
+socketio = SocketIO(app, async_mode=async_mode)
+
+
 @app.before_request
 def start_time():
     now = time.time()
@@ -29,6 +37,7 @@ def start_time():
         redisClient.incr('put')
     if request.method == "DELETE":
         redisClient.incr('delete')
+    socketio.emit('recent_update',namespace = '/test');
 
 def set_request_value(request):
     if request.method == "POST":
@@ -68,9 +77,12 @@ def get_active_request():
     response["DELETE"] = int(redisClient.get('delete'))
     return response
 
-def minute_stat(method_list):
+def minute_stat(method_list,current_time = None):
     valid_responses = []
-    current_time = g.start
+    if current_time == None: 
+        current_time = g.start
+    else:
+        current_time = datetime.datetime.fromtimestamp(time.time())
     records = []
     for i in range(0,redisClient.llen('records')):
         records.append(pickle.loads(redisClient.lindex('records',i)))
@@ -91,9 +103,14 @@ def minute_stat(method_list):
     return minute_stat_dict
 
 
-def hour_stat(method_list):
+def hour_stat(method_list,current_time = None):
     valid_responses = []
-    current_time = g.start
+
+    if current_time == None: 
+        current_time = g.start
+    else:
+        current_time = datetime.datetime.fromtimestamp(time.time())
+    
     records = []
     for i in range(0,redisClient.llen('records')):
         records.append(pickle.loads(redisClient.lindex('records',i)))
@@ -125,19 +142,31 @@ def general_stat(method_list):
         general_stat_dict[method_count] = number_of_method_request(records,methods)
     return general_stat_dict
 
-@app.route('/stats',methods = ['GET', 'POST', 'PUT', 'DELETE'])
-def get_stat():
+def get_stats_socket():
     response = {}
-    set_request_value(request)
-    response["minute_stat"] = minute_stat(['GET', 'POST', 'PUT', 'DELETE'])
-    response["hour_stat"] = hour_stat(['GET', 'POST', 'PUT', 'DELETE'])
+    response["minute_stat"] = minute_stat(['GET', 'POST', 'PUT', 'DELETE'],current_time=time.time())
+    response["hour_stat"] = hour_stat(['GET', 'POST', 'PUT', 'DELETE'],current_time= time.time())
     response["general_stat"] = general_stat(['GET', 'POST', 'PUT', 'DELETE'])
     response["active_request"] = get_active_request();
-    
-    return jsonify(response)
+    return json.dumps(response)
 
+@app.route('/stats',methods = ['GET', 'POST', 'PUT', 'DELETE'])
+def get_stat():
+    return render_template('stats.html')
 
+@socketio.on('my_event',namespace = '/test')
+def test_message(message):
+    response = get_stats_socket()
+    emit('my_response',response)
 
+def push_update():
+    response = get_stats_socket()
+    socketio.emit("my_response",response,namespace = '/test')
+
+@socketio.on('connect',namespace = '/test')
+def test_connect():
+    response = get_stats_socket()
+    emit('my_response',response)
 
 @app.route('/process/',methods = ['GET', 'POST', 'PUT', 'DELETE'])
 def entrypoint():
@@ -152,9 +181,10 @@ def entrypoint():
     response["duration"]= time1
     save_incoming_request(response)
     set_request_value(request)
+    socketio.emit('recent_update',namespace = '/test')
     return jsonify(response)
     
 
 
 if __name__=='__main__':
-    app.run(debug = True,port=5000)
+   socketio.run(app,debug = True,port= 5000)
