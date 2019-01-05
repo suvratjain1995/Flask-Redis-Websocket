@@ -7,21 +7,15 @@ import random
 import redis
 from rq import Queue
 from rq.job import Job
-from worker import conn
 import json
 import pickle
 # q = Queue(connection=conn)
-class Records:
-    records = []
-    def __init__(self):
-        pass
 
 redisClient = redis.StrictRedis(host='localhost',port=6379,db=0)
 redisClient.set('post',0)
 redisClient.set('get',0)
 redisClient.set('put',0)
 redisClient.set('delete',0)
-r = Records()
 @app.before_request
 def start_time():
     now = time.time()
@@ -65,7 +59,6 @@ def number_of_method_request(response_list,method_name):
     return number_of_request;
 
 def save_incoming_request(response):
-    Records.records.append(response)
     redisClient.rpush("records",pickle.dumps(response))
 
 def get_active_request():
