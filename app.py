@@ -102,12 +102,6 @@ def minute_stat(method_list):
 def hour_stat(method_list):
     valid_responses = []
     current_time = g.start
-    # for responses in Records.records:
-    #     temp_recieve_time = responses["Time"]
-    #     if temp_recieve_time.day == current_time.day and \
-    #         temp_recieve_time.hour == current_time.hour and \
-    #         temp_recieve_time.year == current_time.year:
-    #         valid_responses.append(responses)
     records = []
     for i in range(0,redisClient.llen('records')):
         records.append(pickle.loads(redisClient.lindex('records',i)))
