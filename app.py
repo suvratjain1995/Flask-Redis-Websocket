@@ -1,14 +1,26 @@
 from flask import Flask,request,g,jsonify
+from multiprocessing import Queue
 app = Flask(__name__)
 import datetime
 import time
 import random
-
+import redis
+from rq import Queue
+from rq.job import Job
+from worker import conn
+import json
+import pickle
+# q = Queue(connection=conn)
 class Records:
     records = []
     def __init__(self):
         pass
 
+redisClient = redis.StrictRedis(host='localhost',port=6379,db=0)
+redisClient.set('post',0)
+redisClient.set('get',0)
+redisClient.set('put',0)
+redisClient.set('delete',0)
 r = Records()
 @app.before_request
 def start_time():
@@ -16,6 +28,24 @@ def start_time():
     dt = datetime.datetime.fromtimestamp(now)   
     timestamp = dt
     g.start = timestamp
+    if request.method == "POST":
+        redisClient.incr('post')
+    if request.method == "GET":
+        redisClient.incr('get')
+    if request.method == "PUT":
+        redisClient.incr('put')
+    if request.method == "DELETE":
+        redisClient.incr('delete')
+
+def set_request_value(request):
+    if request.method == "POST":
+        redisClient.decr('post')
+    if request.method == "GET":
+        redisClient.decr('get')
+    if request.method == "PUT":
+        redisClient.decr('put')
+    if request.method == "DELETE":
+        redisClient.decr('delete')
 
 def average_request(reponse_list,method_name):
     average_request_result = 0
@@ -36,11 +66,23 @@ def number_of_method_request(response_list,method_name):
 
 def save_incoming_request(response):
     Records.records.append(response)
+    redisClient.rpush("records",pickle.dumps(response))
+
+def get_active_request():
+    response = {}
+    response["POST"] = int(redisClient.get('post'))
+    response["PUT"] = int(redisClient.get('put'))
+    response["GET"] = int(redisClient.get('get'))
+    response["DELETE"] = int(redisClient.get('delete'))
+    return response
 
 def minute_stat(method_list):
     valid_responses = []
     current_time = g.start
-    for responses in Records.records:
+    records = []
+    for i in range(0,redisClient.llen('records')):
+        records.append(pickle.loads(redisClient.lindex('records',i)))
+    for responses in records:
         temp_recieve_time = responses["Time"]
         if temp_recieve_time.day == current_time.day and \
             temp_recieve_time.hour == current_time.hour and \
@@ -60,7 +102,16 @@ def minute_stat(method_list):
 def hour_stat(method_list):
     valid_responses = []
     current_time = g.start
-    for responses in Records.records:
+    # for responses in Records.records:
+    #     temp_recieve_time = responses["Time"]
+    #     if temp_recieve_time.day == current_time.day and \
+    #         temp_recieve_time.hour == current_time.hour and \
+    #         temp_recieve_time.year == current_time.year:
+    #         valid_responses.append(responses)
+    records = []
+    for i in range(0,redisClient.llen('records')):
+        records.append(pickle.loads(redisClient.lindex('records',i)))
+    for responses in records:
         temp_recieve_time = responses["Time"]
         if temp_recieve_time.day == current_time.day and \
             temp_recieve_time.hour == current_time.hour and \
@@ -88,16 +139,21 @@ def general_stat(method_list):
 @app.route('/stats',methods = ['GET', 'POST', 'PUT', 'DELETE'])
 def get_stat():
     response = {}
+    set_request_value(request)
     response["minute_stat"] = minute_stat(['GET', 'POST', 'PUT', 'DELETE'])
     response["hour_stat"] = hour_stat(['GET', 'POST', 'PUT', 'DELETE'])
     response["general_stat"] = general_stat(['GET', 'POST', 'PUT', 'DELETE'])
-
+    response["active_request"] = get_active_request();
+    
     return jsonify(response)
+
+
+
 
 @app.route('/process/',methods = ['GET', 'POST', 'PUT', 'DELETE'])
 def entrypoint():
     response = {}
-    time1 = random.randint(2,3)
+    time1 = random.randint(15,30)
     time.sleep(time1)
     response["Time"] = g.start
     response["Method"] = request.method
@@ -106,7 +162,10 @@ def entrypoint():
     response["Body"]= request.json
     response["duration"]= time1
     save_incoming_request(response)
+    set_request_value(request)
     return jsonify(response)
+    
+
 
 if __name__=='__main__':
-    app.run(debug = False,port=5000)
+    app.run(debug = True,port=5000)
