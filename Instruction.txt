@@ -1,0 +1,12 @@
+Hello, 
+STEPS TO RUN THE PROGRAM.
+1. Install Redis for Linux
+2. You can install the packages required to run the program using Anaconda. I have added the environment.yml file for the same.Added a requirements.txt containing the pip packages that I installed in conda environment.
+3. The program runs on local host
+
+
+POINTS 
+1. The stats are persistent ie they are not lost when the server is restarted.
+2. The Websocket for the live stats is working at http://127.0.0.1:5000/stats . Its a JSON view of all the stats that were required, that is getting updated live.
+
+    
